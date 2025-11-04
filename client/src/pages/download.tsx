@@ -35,10 +35,13 @@ export default function Download() {
   };
 
   const handleDownloadReport = () => {
-    toast({
-      title: "Report generation",
-      description: "PDF report generation coming soon",
-    });
+    if (generationId) {
+      window.location.href = `/api/report/${generationId}`;
+      toast({
+        title: "Report generation",
+        description: "Your PDF report is being generated",
+      });
+    }
   };
 
   return (

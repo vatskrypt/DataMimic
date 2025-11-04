@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
-import { useNavigate } from "wouter";
+import { useState, useCallback, useRef } from "react";
+import { useLocation } from "wouter";
 import { Upload as UploadIcon, FileText, X, CheckCircle, Loader2 } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -11,10 +11,11 @@ import { apiRequest } from "@/lib/queryClient";
 import uploadEmptyImage from "@assets/generated_images/Upload_empty_state_icon_a3e2f197.png";
 
 export default function Upload() {
-  const [, setLocation] = useNavigate();
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [previewData, setPreviewData] = useState<{
     headers: string[];
     rows: string[][];
@@ -181,13 +182,17 @@ export default function Upload() {
                 </div>
                 <div className="relative">
                   <input
+                    ref={fileInputRef}
                     type="file"
                     accept=".csv"
                     onChange={handleFileInput}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    className="hidden"
                     data-testid="input-file-upload"
                   />
-                  <Button data-testid="button-browse">
+                  <Button
+                    data-testid="button-browse"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
                     <UploadIcon className="w-4 h-4 mr-2" />
                     Browse Files
                   </Button>

@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
-import { useNavigate } from "wouter";
+import { useState, useCallback, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { Brain, Activity, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,11 +14,36 @@ import { useToast } from "@/hooks/use-toast";
 type ModelType = 'ctgan' | 'copula';
 
 export default function Models() {
-  const [, setLocation] = useNavigate();
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [selectedModel, setSelectedModel] = useState<ModelType | null>(null);
-  const [epochs, setEpochs] = useState([100]);
+  const [epochs, setEpochs] = useState([300]);
   const [batchSize, setBatchSize] = useState([500]);
+  const [analyze, setAnalyze] = useState<{ columns: string[]; dtypes: {name: string; dtype: string; suggestions: any}[]; relations: string[][] } | null>(null);
+  const [colsToSynth, setColsToSynth] = useState<string[]>([]);
+  const [constraints, setConstraints] = useState<Record<string, { type?: string; min?: number; max?: number }>>({});
+  const [relations, setRelations] = useState<string[][]>([]);
+
+  useEffect(() => {
+    const datasetId = localStorage.getItem('currentDatasetId');
+    if (!datasetId) return;
+    (async () => {
+      try {
+        const res = await apiRequest('POST', '/api/analyze_dataset', { datasetId });
+        const data = await res.json();
+        setAnalyze(data);
+        // seed constraints from suggestions
+        const seeded: Record<string, {type?: string; min?: number; max?: number}> = {};
+        for (const d of data.dtypes || []) {
+          seeded[d.name] = { type: d.suggestions?.type, min: d.suggestions?.min, max: d.suggestions?.max };
+        }
+        setConstraints(seeded);
+        setRelations(data.relations || []);
+      } catch (e: any) {
+        console.error('analyze failed', e);
+      }
+    })();
+  }, []);
 
   const models = [
     {
@@ -66,14 +91,20 @@ export default function Models() {
         throw new Error('No dataset selected');
       }
 
-      return await apiRequest('POST', '/api/generate', {
+      // Always use controlled endpoint. If user didn't select columns, default to all columns
+      const selected = colsToSynth.length > 0 ? colsToSynth : (analyze?.columns ?? []);
+      const res = await apiRequest('POST', '/api/generate_controlled', {
         datasetId,
-        modelType: selectedModel,
+        cols_to_synthesize: selected,
+        constraints,
+        relations,
+        modelType: selectedModel ?? 'auto',
         parameters: {
           epochs: epochs[0],
           batchSize: batchSize[0],
         },
       });
+      return await res.json();
     },
     onSuccess: (data) => {
       localStorage.setItem('currentGenerationId', data.generation.id);
@@ -284,6 +315,81 @@ export default function Models() {
                         Generation is typically fast and doesn't require parameter tuning.
                       </p>
                     </div>
+                  )}
+                </AccordionContent>
+              </AccordionItem>
+              <AccordionItem value="controlled">
+                <AccordionTrigger>Controlled Generation (column selection and constraints)</AccordionTrigger>
+                <AccordionContent className="space-y-4">
+                  {analyze ? (
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-sm font-medium mb-2">Select columns to synthesize</p>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                          {analyze.columns.map((col) => (
+                            <label key={col} className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={colsToSynth.includes(col)}
+                                onChange={(e) => {
+                                  setColsToSynth((prev) => e.target.checked ? [...prev, col] : prev.filter(c => c !== col));
+                                }}
+                              />
+                              <span>{col}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      {colsToSynth.length > 0 && (
+                        <div className="space-y-3">
+                          <p className="text-sm font-medium">Constraints</p>
+                          <div className="space-y-2">
+                            {colsToSynth.map((col) => {
+                              const cfg = constraints[col] || {};
+                              return (
+                                <div key={col} className="grid grid-cols-1 md:grid-cols-4 gap-2 items-center">
+                                  <div className="md:col-span-1 text-sm font-medium">{col}</div>
+                                  <input
+                                    className="border rounded px-2 py-1 text-sm"
+                                    placeholder="type (int|float|categorical)"
+                                    value={cfg.type || ''}
+                                    onChange={(e) => setConstraints((prev) => ({ ...prev, [col]: { ...prev[col], type: e.target.value } }))}
+                                  />
+                                  <input
+                                    type="number"
+                                    className="border rounded px-2 py-1 text-sm"
+                                    placeholder="min"
+                                    value={cfg.min ?? ''}
+                                    onChange={(e) => setConstraints((prev) => ({ ...prev, [col]: { ...prev[col], min: e.target.value === '' ? undefined : Number(e.target.value) } }))}
+                                  />
+                                  <input
+                                    type="number"
+                                    className="border rounded px-2 py-1 text-sm"
+                                    placeholder="max"
+                                    value={cfg.max ?? ''}
+                                    onChange={(e) => setConstraints((prev) => ({ ...prev, [col]: { ...prev[col], max: e.target.value === '' ? undefined : Number(e.target.value) } }))}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {analyze.relations && analyze.relations.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium">Suggested relations (locked)</p>
+                          <div className="flex flex-wrap gap-2 text-xs">
+                            {relations.map((pair, idx) => (
+                              <span key={idx} className="px-2 py-1 rounded bg-muted">{pair[0]} ↔ {pair[1]}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Analyzing dataset...</p>
                   )}
                 </AccordionContent>
               </AccordionItem>

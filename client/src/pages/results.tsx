@@ -35,6 +35,12 @@ export default function Results() {
     enabled: !!generationId,
   });
 
+  // Fetch original dataset data
+  const { data: datasetData } = useQuery({
+    queryKey: ['/api/datasets', data?.generation?.datasetId],
+    enabled: !!data?.generation?.datasetId,
+  });
+
   const evaluation = data?.evaluation;
   const generation = data?.generation;
 
@@ -73,20 +79,45 @@ export default function Results() {
     correlationDistance: evaluation?.correlationDistance || 0,
   };
 
-  // Parse sample data from synthetic CSV
+  // Parse sample data from synthetic and original CSVs
   const parseSampleData = () => {
-    if (!generation?.syntheticData) return null;
-    
-    const lines = generation.syntheticData.trim().split('\n');
-    const headers = lines[0].split(',').map((h: string) => h.trim());
-    const rows = lines.slice(1, 4).map((line: string) => line.split(',').map((c: string) => c.trim()));
-    
-    return { headers, synthetic: rows, original: rows };
+    if (!generation?.syntheticData || !datasetData) return null;
+
+    // Parse synthetic data
+    const synLines = generation.syntheticData.trim().split('\n');
+    const synHeaders = (synLines[0] || '').split(',').map((h: string) => h.trim());
+    const synRows = synLines
+      .slice(1, 4)
+      .map((line: string) => line.split(',').map((c: string) => c.trim()));
+
+    // Parse original data from dataset API response shape: { dataset: { fileData, ... } }
+    const dataset = (datasetData as any)?.dataset;
+    const fileData: string | undefined = dataset?.fileData;
+
+    let origHeaders: string[] = [];
+    let origRows: string[][] = [];
+    if (typeof fileData === 'string' && fileData.trim().length > 0) {
+      const origLines = fileData.trim().split('\n');
+      origHeaders = (origLines[0] || '').split(',').map((h: string) => h.trim());
+      origRows = origLines
+        .slice(1, 4)
+        .map((line: string) => line.split(',').map((c: string) => c.trim()));
+    } else {
+      // Fallback to synthetic data if original is not available
+      origHeaders = synHeaders;
+      origRows = synRows;
+    }
+
+    return {
+      headers: origHeaders.length ? origHeaders : synHeaders,
+      synthetic: synRows,
+      original: origRows,
+    };
   };
 
   const sampleData = parseSampleData();
 
-  if (isLoading) {
+  if (isLoading || !sampleData) {
     return (
       <div className="space-y-8">
         <div>
@@ -220,7 +251,7 @@ export default function Results() {
             <CardContent>
               <div className="h-[400px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={mockCorrelationData}>
+                  <LineChart data={correlationData}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                     <XAxis dataKey="variable" className="text-xs" />
                     <YAxis domain={[0, 1]} className="text-xs" />
