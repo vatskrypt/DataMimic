@@ -14,7 +14,7 @@ services:
       - key: PORT
         value: 10000
       - key: ALLOWED_ORIGIN
-        value: https://YOUR-VERCEL-DOMAIN.vercel.app
+        value: https://data-mimic.vercel.app
       # Optional: persistent storage
       - key: DATABASE_URL
         sync: false
