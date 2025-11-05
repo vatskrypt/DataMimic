@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: datamimic-api
+    env: node
+    plan: free
+    branch: main
+    buildCommand: "npm install && npm run build"
+    startCommand: "npm start"
+    autoDeploy: true
+    healthCheckPath: "/api/datasets"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: ALLOWED_ORIGIN
+        value: https://YOUR-VERCEL-DOMAIN.vercel.app
+      # Optional: persistent storage
+      - key: DATABASE_URL
+        sync: false
+      # Optional: prefer JS fallback in serverless environments
+      - key: PYTHON_BIN
+        value: ""
